@@ -13,8 +13,8 @@ const generateLastModifiedDateFilter = (date, nowDate, propertyName = 'hs_lastmo
   const lastModifiedDateFilter = date
     ? {
         filters: [
-          { propertyName, operator: 'GTQ', value: \`\${date.valueOf()}\` },
-          { propertyName, operator: 'LTQ', value: \`\${nowDate.valueOf()}\` }
+          { propertyName, operator: 'GTQ', value: `${date.valueOf()}` },
+          { propertyName, operator: 'LTQ', value: `${nowDate.valueOf()}` }
         ]
       }
     : {};
@@ -211,18 +211,21 @@ const processContacts = async (domain, hubId, q) => {
       body: { inputs: contactsToAssociate.map(contactId => ({ id: contactId })) }
     })).json())?.results || [];
 
-    const companyAssociations = Object.fromEntries(companyAssociationsResults.map(a => {
-      if (a.from) {
-        contactsToAssociate.splice(contactsToAssociate.indexOf(a.from.id), 1);
-        return [a.from.id, a.to[0].id];
-      } else return false;
-    }).filter(x => x));
+    const companyAssociations = Object.fromEntries(
+      companyAssociationsResults
+        .map(a => {
+          if (a.from) {
+            contactsToAssociate.splice(contactsToAssociate.indexOf(a.from.id), 1);
+            return [a.from.id, a.to[0].id];
+          } else return false;
+        })
+        .filter(x => x)
+    );
 
     data.forEach(contact => {
       if (!contact.properties || !contact.properties.email) return;
 
       const companyId = companyAssociations[contact.id];
-
       const isCreated = new Date(contact.createdAt) > lastPulledDate;
 
       const userProperties = {
@@ -280,7 +283,13 @@ const processMeetings = async (domain, hubId, q) => {
     const searchObject = {
       filterGroups: [lastModifiedDateFilter],
       sorts: [{ propertyName: 'hs_lastmodifieddate', direction: 'ASCENDING' }],
-      properties: ['hs_meeting_title', 'hs_meeting_start_time', 'hs_meeting_end_time', 'hs_createdate', 'hs_lastmodifieddate'],
+      properties: [
+        'hs_meeting_title',
+        'hs_meeting_start_time',
+        'hs_meeting_end_time',
+        'hs_createdate',
+        'hs_lastmodifieddate'
+      ],
       limit,
       after: offsetObject.after
     };
@@ -304,10 +313,9 @@ const processMeetings = async (domain, hubId, q) => {
     if (!searchResult) throw new Error('Failed to fetch meetings for the 4th time. Aborting.');
 
     const data = searchResult.results || [];
+    offsetObject.after = parseInt(searchResult.paging?.next?.after);
 
     console.log('fetch meeting batch');
-
-    offsetObject.after = parseInt(searchResult.paging?.next?.after);
 
     const meetingIds = data.map(m => m.id);
 
@@ -326,7 +334,10 @@ const processMeetings = async (domain, hubId, q) => {
       console.log('Error fetching meeting-contact associations', err);
     }
 
-    const meetingContactAssociations = meetingContactAssociationsResponse ? (await meetingContactAssociationsResponse.json()).results || [] : [];
+    const meetingContactAssociations = meetingContactAssociationsResponse
+      ? (await meetingContactAssociationsResponse.json()).results || []
+      : [];
+
     // create map meetingId => array of contactIds
     const meetingToContactsMap = {};
     meetingContactAssociations.forEach(assoc => {
@@ -364,7 +375,11 @@ const processMeetings = async (domain, hubId, q) => {
     data.forEach(meeting => {
       const isCreated = new Date(meeting.properties.hs_createdate) > lastPulledDate;
       const actionName = isCreated ? 'Meeting Created' : 'Meeting Updated';
-      const actionDate = new Date(isCreated ? meeting.properties.hs_createdate : meeting.properties.hs_lastmodifieddate);
+      const actionDate = new Date(
+        isCreated
+          ? meeting.properties.hs_createdate
+          : meeting.properties.hs_lastmodifieddate
+      );
 
       const userProperties = {
         meeting_title: meeting.properties.hs_meeting_title,
@@ -392,7 +407,9 @@ const processMeetings = async (domain, hubId, q) => {
       break;
     } else if (offsetObject?.after >= 9900) {
       offsetObject.after = 0;
-      offsetObject.lastModifiedDate = new Date(data[data.length - 1].properties.hs_lastmodifieddate).valueOf();
+      offsetObject.lastModifiedDate = new Date(
+        data[data.length - 1].properties.hs_lastmodifieddate
+      ).valueOf();
     }
   }
 
@@ -406,7 +423,10 @@ const createQueue = (domain, actions) =>
     actions.push(action);
 
     if (actions.length > 2000) {
-      console.log('inserting actions to database', { apiKey: domain.apiKey, count: actions.length });
+      console.log('inserting actions to database', {
+        apiKey: domain.apiKey,
+        count: actions.length
+      });
 
       const copyOfActions = _.cloneDeep(actions);
       actions.splice(0, actions.length);
@@ -438,7 +458,10 @@ const pullDataFromHubspot = async () => {
     try {
       await refreshAccessToken(domain, account.hubId);
     } catch (err) {
-      console.log(err, { apiKey: domain.apiKey, metadata: { operation: 'refreshAccessToken' } });
+      console.log(err, {
+        apiKey: domain.apiKey,
+        metadata: { operation: 'refreshAccessToken' }
+      });
     }
 
     const actions = [];
@@ -448,28 +471,40 @@ const pullDataFromHubspot = async () => {
       await processContacts(domain, account.hubId, q);
       console.log('process contacts');
     } catch (err) {
-      console.log(err, { apiKey: domain.apiKey, metadata: { operation: 'processContacts', hubId: account.hubId } });
+      console.log(err, {
+        apiKey: domain.apiKey,
+        metadata: { operation: 'processContacts', hubId: account.hubId }
+      });
     }
 
     try {
       await processCompanies(domain, account.hubId, q);
       console.log('process companies');
     } catch (err) {
-      console.log(err, { apiKey: domain.apiKey, metadata: { operation: 'processCompanies', hubId: account.hubId } });
+      console.log(err, {
+        apiKey: domain.apiKey,
+        metadata: { operation: 'processCompanies', hubId: account.hubId }
+      });
     }
 
     try {
       await processMeetings(domain, account.hubId, q);
       console.log('process meetings');
     } catch (err) {
-      console.log(err, { apiKey: domain.apiKey, metadata: { operation: 'processMeetings', hubId: account.hubId } });
+      console.log(err, {
+        apiKey: domain.apiKey,
+        metadata: { operation: 'processMeetings', hubId: account.hubId }
+      });
     }
 
     try {
       await drainQueue(domain, actions, q);
       console.log('drain queue');
     } catch (err) {
-      console.log(err, { apiKey: domain.apiKey, metadata: { operation: 'drainQueue', hubId: account.hubId } });
+      console.log(err, {
+        apiKey: domain.apiKey,
+        metadata: { operation: 'drainQueue', hubId: account.hubId }
+      });
     }
 
     await saveDomain(domain);

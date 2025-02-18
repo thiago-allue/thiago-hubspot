@@ -1,3 +1,7 @@
+**Summary of What Was Done**
+
+---
+
 In this update, we introduced a new feature to fetch meetings from HubSpot similar to how contacts and companies are processed. 
 
 In `Domain.js`, we added a `meetings` field to the `lastPulledDates` object so we can track the last time meetings were pulled. 
